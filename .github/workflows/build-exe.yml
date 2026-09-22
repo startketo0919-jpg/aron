@@ -34,8 +34,8 @@ jobs:
       - name: Install Python Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install flaskwebgui pyinstaller
+          python -m pip install -r requirements.txt
+          python -m pip install flaskwebgui waitress whitenoise pyinstaller
 
       - name: Prepare Database
         run: |
@@ -43,9 +43,11 @@ jobs:
 
       - name: Package Application with PyInstaller
         run: |
-          pyinstaller --noconsole --name "AronPOS" `
+          python -m PyInstaller --noconsole --name "AronPOS" `
             --collect-all django `
             --collect-all rest_framework `
+            --collect-all flaskwebgui `
+            --collect-all waitress `
             --hidden-import=core `
             --hidden-import=core.apps `
             --hidden-import=user `
@@ -55,21 +57,20 @@ jobs:
             --hidden-import=orders `
             --hidden-import=customers `
             --hidden-import=prints `
-            --hidden-import=flaskwebgui `
             --add-data "templates;templates" `
             --add-data "static;static" `
             --add-data "aron_settings.json;." `
             --add-data "db.sqlite3;." `
             gui.py
 
-      - name: Copy Database to Output
+      - name: Copy Database and Settings to Output
         run: |
           Copy-Item "db.sqlite3" -Destination "dist\AronPOS\db.sqlite3" -Force
           Copy-Item "aron_settings.json" -Destination "dist\AronPOS\aron_settings.json" -Force
 
       - name: Create Zip Package
         run: |
-          Compress-Archive -Path dist\AronPOS\* -DestinationPath AronPOS-Windows.zip
+          Compress-Archive -Path dist\AronPOS -DestinationPath AronPOS-Windows.zip
 
       - name: Upload Build Artifact
         uses: actions/upload-artifact@v4
