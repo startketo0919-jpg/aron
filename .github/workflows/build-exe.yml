@@ -47,79 +47,73 @@ jobs:
           import os
           import sys
           import time
+          import socket
           import subprocess
           import threading
+
+          # Must be set BEFORE any Django imports
+          os.environ.setdefault("DJANGO_SETTINGS_MODULE", "app.settings")
+
+          # Tell Django where the project root is (for finding templates, static, db)
+          BASE_DIR = os.path.dirname(os.path.abspath(sys.executable if getattr(sys, "frozen", False) else __file__))
+          if getattr(sys, "frozen", False):
+              os.chdir(BASE_DIR)
+
           from waitress import serve
           from whitenoise import WhiteNoise
           from app.wsgi import application as django_app
 
-          app = WhiteNoise(django_app)
-          if os.path.exists("static"):
-              app.add_files("static", prefix="/static/")
+          PORT = 8000
+
+          def wait_for_server(host, port, timeout=30):
+              """Wait until the server is actually accepting connections."""
+              start = time.time()
+              while time.time() - start < timeout:
+                  try:
+                      with socket.create_connection((host, port), timeout=1):
+                          return True
+                  except (ConnectionRefusedError, OSError):
+                      time.sleep(0.3)
+              return False
 
           def start_server():
-              serve(app, host="127.0.0.1", port=8000, threads=8)
+              app = WhiteNoise(django_app)
+              serve(app, host="127.0.0.1", port=PORT, threads=8)
 
           def launch_browser():
-              url = "http://127.0.0.1:8000"
-              time.sleep(1.5)
-              
+              url = f"http://127.0.0.1:{PORT}"
+              wait_for_server("127.0.0.1", PORT)
+
               edge_paths = [
                   r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
                   r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
                   r"C:\Program Files\Google\Chrome\Application\chrome.exe",
-                  r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe"
+                  r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
               ]
-              
+
               browser_exe = None
               for path in edge_paths:
                   if os.path.exists(path):
                       browser_exe = path
                       break
-                      
+
               if browser_exe:
-                  proc = subprocess.Popen([browser_exe, f"--app={url}", "--window-size=1200,800"])
+                  proc = subprocess.Popen([
+                      browser_exe,
+                      f"--app={url}",
+                      "--window-size=1280,800",
+                      "--disable-extensions",
+                  ])
                   proc.wait()
-                  os._exit(0)
               else:
                   import webbrowser
                   webbrowser.open(url)
+                  input("Press Enter to quit...")
+
+              os._exit(0)
 
           if __name__ == "__main__":
-              t = threading.Thread(target=start_server, daemon=True)
-              t.start()
+              server_thread = threading.Thread(target=start_server, daemon=True)
+              server_thread.start()
               launch_browser()
           '@ | Set-Content -Path gui.py -Encoding utf8
-
-      - name: Package Application with PyInstaller
-        run: |
-          python -m PyInstaller --noconsole --name "AronPOS" `
-            --collect-all django `
-            --collect-all rest_framework `
-            --collect-all waitress `
-            --collect-all whitenoise `
-            --hidden-import=core `
-            --hidden-import=core.apps `
-            --hidden-import=user `
-            --hidden-import=user.api `
-            --hidden-import=products `
-            --hidden-import=taxes `
-            --hidden-import=orders `
-            --hidden-import=customers `
-            --hidden-import=prints `
-            --add-data "templates;templates" `
-            --add-data "static;static" `
-            --add-data "aron_settings.json;." `
-            --add-data "db.sqlite3;." `
-            gui.py
-
-      - name: Copy Database and Settings to Output
-        run: |
-          Copy-Item "db.sqlite3" -Destination "dist\AronPOS\db.sqlite3" -Force
-          Copy-Item "aron_settings.json" -Destination "dist\AronPOS\aron_settings.json" -Force
-
-      - name: Upload Build Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: AronPOS-Windows
-          path: dist/AronPOS
